@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "id": "app-logo",
+      "path": "branding/app-logo.png",
+      "mediaType": "image/png",
+      "purpose": "application-branding",
+      "alt": "Hacker House Medellín application logo"
+    }
+  ]
+}
