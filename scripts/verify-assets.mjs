@@ -1,8 +1,22 @@
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PNG_SIGNATURE = Buffer.from('89504e470d0a1a0a', 'hex');
+const MAX_ASSET_BYTES = 10 * 1024 * 1024;
+
+function hasPngSignature(file) {
+  const descriptor = openSync(file, 'r');
+  try {
+    const bytes = Buffer.alloc(PNG_SIGNATURE.length);
+    return readSync(descriptor, bytes, 0, bytes.length, 0) === bytes.length
+      && bytes.equals(PNG_SIGNATURE);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 
 export function validateAssets(root, manifest) {
   const errors = [];
@@ -37,9 +51,25 @@ export function validateAssets(root, manifest) {
       errors.push(`${where}: missing file ${relative}`);
       continue;
     }
+    let inspected = realpathSync(root);
+    const symlinked = relative.split('/').some((part) => {
+      inspected = path.join(inspected, part);
+      return lstatSync(inspected).isSymbolicLink();
+    });
+    if (symlinked) {
+      errors.push(`${where}: symlinks are not permitted in asset paths`);
+      continue;
+    }
     const real = realpathSync(candidate);
-    if (!real.startsWith(realpathSync(root) + path.sep) || !lstatSync(candidate).isFile()) {
+    const file = lstatSync(candidate);
+    if (!real.startsWith(realpathSync(root) + path.sep) || !file.isFile()) {
       errors.push(`${where}: asset escapes root or is not a regular file`);
+      continue;
+    }
+    if (file.size > MAX_ASSET_BYTES) {
+      errors.push(`${where}: asset exceeds 10 MiB`);
+    } else if (!hasPngSignature(candidate)) {
+      errors.push(`${where}: file does not have a PNG signature`);
     }
   }
   return errors;
